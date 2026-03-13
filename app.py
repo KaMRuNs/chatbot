@@ -17,126 +17,129 @@ st.set_page_config(page_title="Simple Chatbot", page_icon="🤖", layout="center
 # ---- Custom CSS ----
 st.markdown("""
 <style>
-    /* Import modern typography */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    /* Gemini-inspired Dark Theme */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;700&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
+        background-color: #131314;
     }
 
-    /* Main Background & Glassmorphism elements */
     .stApp {
-        background: radial-gradient(circle at 15% 50%, #1e1b4b, #0f172a 60%);
+        background-color: #131314;
     }
 
-    /* Top Title Styling */
+    /* Minimalist SideBar */
+    section[data-testid="stSidebar"] {
+        background-color: #1e1f20 !important;
+        border-right: 1px solid rgba(255,255,255,0.05);
+    }
+
+    /* Modern Typography */
     h1 {
-        background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-family: 'Outfit', sans-serif;
+        color: #e3e3e3;
         font-weight: 700;
-        margin-bottom: 0.5rem;
+        letter-spacing: -0.5px;
+        margin-bottom: 0px !important;
     }
 
-    /* Agent Badges with glowing & glass logic */
+    .gemini-subheader {
+        font-size: 1.2rem;
+        color: #8e918f;
+        margin-bottom: 2rem;
+    }
+
+    /* Agent Badges (Gemini Style) */
     .agent-badge {
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        margin-bottom: 8px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    }
-    
-    .badge-search {
-        background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0.05));
-        border: 1px solid rgba(56, 189, 248, 0.4);
-        color: #38bdf8;
-    }
-    
-    .badge-rag {
-        background: linear-gradient(135deg, rgba(52, 211, 153, 0.2), rgba(52, 211, 153, 0.05));
-        border: 1px solid rgba(52, 211, 153, 0.4);
-        color: #34d399;
-    }
-    
-    .badge-action {
-        background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.05));
-        border: 1px solid rgba(251, 191, 36, 0.4);
-        color: #fbbf24;
-    }
-    
-    /* Sleek Chat Messages */
-    .stChatMessage {
-        background: rgba(30, 41, 59, 0.6) !important;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 16px 20px;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-        margin-bottom: 12px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    
-    .stChatMessage:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-    }
-
-    /* Sidebar info styling */
-    .sidebar-info {
-        font-size: 0.85rem;
-        color: #94a3b8;
-        padding: 12px 0;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-        margin-bottom: 16px;
-    }
-
-    /* RAG Chunks styling */
-    .chunk-header {
-        display: flex;
-        justify-content: space-between;
+        display: inline-flex;
         align-items: center;
-        margin-bottom: 8px;
-        font-weight: 500;
-        color: #e2e8f0;
-    }
-    
-    .chunk-meta {
-        font-size: 0.75rem;
-        color: #cbd5e1;
-        background: rgba(15, 23, 42, 0.6);
-        padding: 3px 8px;
-        border-radius: 6px;
+        padding: 4px 12px;
+        border-radius: 8px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+        background: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
+        color: white;
+        box-shadow: 0 0 15px rgba(66, 133, 244, 0.3);
     }
 
-    /* Inputs & Buttons glow effects */
-    .stTextInput div[data-baseweb="input"], .stChatInputContainer {
-        border-radius: 12px !important;
-        transition: all 0.3s ease;
+    /* Chat Message Bubbles */
+    .stChatMessage {
+        background-color: transparent !important;
+        border: none !important;
+        padding: 20px 0 !important;
+        max-width: 800px;
+        margin: 0 auto;
     }
-    
-    .stTextInput div[data-baseweb="input"]:focus-within, .stChatInputContainer:focus-within {
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5) !important;
+
+    /* User Message Style */
+    div[data-testid="stChatMessageUser"] {
+        background-color: #1e1f20 !important;
+        border-radius: 24px !important;
+        padding: 12px 20px !important;
+        margin-left: auto;
+        width: fit-content;
+        max-width: 80%;
     }
+
+    /* Assistant Message Style */
+    div[data-testid="stChatMessageAssistant"] {
+        padding-left: 0 !important;
+    }
+
+    /* Chat Input Fixed to Bottom */
+    .stChatInputContainer {
+        border-radius: 30px !important;
+        background-color: #1e1f20 !important;
+        border: 1px solid #444746 !important;
+        padding: 5px 15px !important;
+        transition: border-color 0.3s ease;
+    }
+
+    .stChatInputContainer:focus-within {
+        border-color: #8ab4f8 !important;
+    }
+
+    /* Hide redundant elements */
+    #MainMenu, footer, header {visibility: hidden;}
     
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #131314;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #444746;
+        border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    /* Buttons */
     div[data-testid="stButton"] button {
-        border-radius: 8px;
-        font-weight: 600;
-        transition: all 0.2s ease;
+        background-color: #1e1f20;
+        border: 1px solid #444746;
+        color: #e3e3e3;
+        border-radius: 20px;
+        padding: 0.5rem 1.5rem;
+        transition: all 0.2s;
     }
-    
+
     div[data-testid="stButton"] button:hover {
-        transform: scale(1.02);
+        background-color: #333537;
+        border-color: #8ab4f8;
     }
 
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Simple Chatbot")
+st.title("Hello, User")
+st.markdown('<div class="gemini-subheader">How can I help you today?</div>', unsafe_allow_html=True)
 
 
 def render_chunks(chunks):
@@ -175,67 +178,67 @@ def render_chunks(chunks):
 
 # ---- Sidebar ----
 with st.sidebar:
-    st.header("Settings")
-
-    st.markdown('<p class="sidebar-info">Powered by GPT-OSS-120B via Groq</p>', unsafe_allow_html=True)
-
+    st.header("Assistant Control")
     st.divider()
 
     # Document Upload Section
     st.subheader("📁 Knowledge Base")
-        st.subheader("Upload Documents")
-        uploaded_files = st.file_uploader(
-            "Upload files", type=["pdf", "txt"], accept_multiple_files=True
-        )
+    uploaded_files = st.file_uploader(
+        "Upload files", type=["pdf", "txt"], accept_multiple_files=True
+    )
 
-        if uploaded_files:
-            if st.button("Process Documents"):
-                with st.spinner("Processing documents..."):
-                    try:
-                        st.session_state.vector_store = build_vector_store(uploaded_files)
-                        st.success(f"Processed {len(uploaded_files)} file(s)!")
-                    except Exception as e:
-                        st.error(f"Error processing documents: {e}")
+    if uploaded_files:
+        if st.button("Process Documents"):
+            with st.spinner("Processing documents..."):
+                try:
+                    st.session_state.vector_store = build_vector_store(uploaded_files)
+                    st.success(f"Processed {len(uploaded_files)} file(s)!")
+                except Exception as e:
+                    st.error(f"Error processing documents: {e}")
                         
     # Resume Upload Section
     st.subheader("📄 Resume (Optional)")
     st.markdown("Upload your resume to use job matching tools.")
     resume_file = st.file_uploader("Upload Resume", type=["pdf", "txt"], key="resume_uploader")
         
-        if resume_file:
-            if st.button("Extract Resume Text"):
-                with st.spinner("Extracting..."):
-                    try:
-                        text = ""
-                        if resume_file.name.endswith(".pdf"):
-                            pdf_reader = pypdf.PdfReader(io.BytesIO(resume_file.read()))
-                            for page in pdf_reader.pages:
-                                text += page.extract_text() + "\n"
-                        else:
-                            text = resume_file.read().decode("utf-8")
+    if resume_file:
+        if st.button("Extract Resume Text"):
+            with st.spinner("Extracting..."):
+                try:
+                    text = ""
+                    if resume_file.name.endswith(".pdf"):
+                        pdf_reader = pypdf.PdfReader(io.BytesIO(resume_file.read()))
+                        for page in pdf_reader.pages:
+                            text += page.extract_text() + "\n"
+                    else:
+                        text = resume_file.read().decode("utf-8")
                             
-                        st.session_state.resume_text = text
-                        st.success("Resume extracted successfully!")
-                    except Exception as e:
-                        st.error(f"Error extracting resume: {e}")
+                    st.session_state.resume_text = text
+                    st.success("Resume extracted successfully!")
+                except Exception as e:
+                    st.error(f"Error extracting resume: {e}")
         
-        if "resume_text" in st.session_state and st.session_state.resume_text:
-            st.success("Resume loaded and ready for action.")
-            with st.expander("View Extracted Text"):
-                st.text(st.session_state.resume_text[:500] + "...")
+    if "resume_text" in st.session_state and st.session_state.resume_text:
+        st.success("Resume loaded and ready for action.")
+        with st.expander("View Extracted Text"):
+            st.text(st.session_state.resume_text[:500] + "...")
 
-    # Status Info
+    # Status & Legend
+    st.markdown("---")
     if "vector_store" in st.session_state:
-        st.success("✅ Documents indexed and ready for Q&A.")
+        st.caption("✅ Knowledge Base Active")
     else:
-        st.warning("💡 Upload docs to enable the RAG tool.")
+        st.caption("💡 Knowledge Base Empty")
     
-    st.info("🛠️ Assistant can also search the web, send emails, and set alarms automatically.")
+    if "resume_text" in st.session_state:
+        st.caption("✅ Resume Background Active")
+
+    st.caption("🛠️ Web, Email, & Alarms are always ON")
 
     st.divider()
 
     # Clear chat button
-    if st.button("Clear Chat"):
+    if st.button("Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
 
@@ -250,7 +253,12 @@ with st.sidebar:
             data=chat_export,
             file_name="smart_assistant_chat.md",
             mime="text/markdown",
+            use_container_width=True
         )
+
+    # Move technical info to bottom
+    st.markdown('<div style="margin-top: 50px;"></div>', unsafe_allow_html=True)
+    st.markdown('<p class="sidebar-info">Engine: GPT-OSS-120B<br>Model: Groq Llama3-70b-Tool-Use</p>', unsafe_allow_html=True)
 
 # ---- Initialize Chat History ----
 if "messages" not in st.session_state:
@@ -278,9 +286,8 @@ for message in messages:
     with st.chat_message(message["role"]):
         # Show agent badge on assistant messages
         if message["role"] == "assistant":
-            badge_class = "badge-action"
             st.markdown(
-                f'<span class="agent-badge {badge_class}">Smart Assistant</span>',
+                f'<span class="agent-badge">Smart Assistant</span>',
                 unsafe_allow_html=True,
             )
         st.markdown(message["content"])
@@ -305,9 +312,8 @@ if prompt := st.chat_input("Ask me anything..."):
 
     # Generate streamed response
     with st.chat_message("assistant"):
-        # Show agent badge
         st.markdown(
-            f'<span class="agent-badge badge-action">Smart Assistant</span>',
+            f'<span class="agent-badge">Smart Assistant</span>',
             unsafe_allow_html=True,
         )
 
