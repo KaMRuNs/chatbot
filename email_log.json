@@ -1,0 +1,44 @@
+[
+  {
+    "timestamp": "2026-03-12T00:10:56.924470",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "Hello",
+    "body": "Hi there!",
+    "status": "simulated"
+  },
+  {
+    "timestamp": "2026-03-12T00:18:48.053919",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "Hello",
+    "body": "Hi there!",
+    "status": "simulated"
+  },
+  {
+    "timestamp": "2026-03-12T00:19:33.652444",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "Hello",
+    "body": "Hi there!",
+    "status": "simulated"
+  },
+  {
+    "timestamp": "2026-03-12T00:22:15.172511",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "Hello",
+    "body": "Hi there!",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-12T00:24:04.165513",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "testing",
+    "body": "It has been sent via chatbot",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-12T01:00:42.786257",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "wifey",
+    "body": "I'm his wife",
+    "status": "sent"
+  }
+]
