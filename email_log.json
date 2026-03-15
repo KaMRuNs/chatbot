@@ -40,5 +40,96 @@
     "subject": "wifey",
     "body": "I'm his wife",
     "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:10:29.553759",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "wife",
+    "body": "bow k chara iftaar",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:13:34.783212",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "wife",
+    "body": "bow k chara iftaar",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:24:26.948718",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "testing",
+    "body": "Awwwww",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:24:31.511790",
+    "to": "mrmushfiq280801@gmail.com",
+    "subject": "testing",
+    "body": "Awwwww",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:25:35.065302",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "testing",
+    "body": "Awwwww",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:28:52.951043",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "testing",
+    "body": "KAMRUN NAHAR+8801533141638 kamrun233420@gmail.com Halishahar, Chattogram, Bangladesh\n\nKamrun Nahar\nWork ExperienceSummary Relevant SkillsEducational History Licence & Certificates\nCONTENT WRITER - OWN WEBSITE & FREELANCING\nBLOG WRITER - OWN WEBSITE\nPHOTOGRAPHER - FREELANCING\nPROJECT TEAM LEADER - UNIVERSITY\nSCRIPT WRITER - YOUTUBE CHANNEL\nMARKETING - SMALL START-UP\nVOLUNTEER - EDGE\n\nFrontend Web Development\nAspiring Computer Science & Engineering Professional | Passionate About Coding, Web Development, Blogging, and Mobile Photography 📸\nHello! I’m Kamrun, a dedicated Computer Science & Engineering student with a passion for technology, creativity, and storytelling. My interests span across coding, web development, and content creation, allowing me to bring a unique blend of technical skills and artistic flair to everything I do.\n\nProficiency in JavaScript, Python, C++, C.\nWeb-Development - HTML, CSS. Development Methodology.\nFrameworks - Bootstrap, TailwindCSS.\nLibrary - React Js.\nSpreadsheet, Microsoft Excel.\nSEO Optimization.\n\nBACHELOR OF COMPUTER SCIENCE - CURRENT CGPA 3.59\nInternational Islamic University Chattogram 2022-Present\nHSC-GPA 5.00 Agrabad Mohila College 2019-2021\nSSC-GPA 5.00 Agrabad Balika Bidyalay 2019\n\nHTML5, CSS3 & BOOTSTRAP 4 FOR WEB DEVELOPMENT\nJAVASCRIPT CERTIFICATION TEST - YOUTUBE COURSE\nHTML CERTIFICATION TEST - YOUTUBE COURSE\nCSS CERTIFICATION TEST - YOUTUBE COURSE\n\nSTUDENT Projects\nA STOPWATCH APPLICATION - STOPWATCH GITHUB JUL 2024 - JUL 2024 USING JUST HTML CSS AND JAVASCRIPT\nA TEXT-TO-SPEECH CONVERTER - CONVERTER GITHUB JUL 2024 - JUL 2024 TRIED TO GO A LITTLE DEEPER WITH JAVASCRIPT WHILE MAKING LOGIC\nA RESTURANT WEBSITE - RESTAURANT_WEBSITE SEP 2024 - SEP 2024 A FULLY RESPONSIVE RESTURANT WEBSITE USING HTML, CSS, JAVASCRIPT\nAMAZON WEBSITE CLONE - AMAZON WEBSITE GITHUB APRIL 2024 - APRIL 2024 AMAZON WEBSITE UI CLONE",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:33:51.346690",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "test",
+    "body": "file",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:34:43.288031",
+    "to": "mushfiq2808@gmail.com",
+    "subject": "Resume",
+    "body": "Please find attached my resume.",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-14T20:49:23.860677",
+    "to": "kamrun233420@gmail.com",
+    "subject": "test subject",
+    "body": "test",
+    "status": "error: (535, b'5.7.8 Username and Password not accepted. For more information, go to\\n5.7.8  https://support.google.com/mail/?p=BadCredentials 98e67ed59e1d1-35a02e7a2edsm11640778a91.7 - gsmtp')"
+  },
+  {
+    "timestamp": "2026-03-14T21:20:56.382030",
+    "to": "hiring-manager@xyzcorp.com",
+    "subject": "Interview Follow-up",
+    "body": "I'm looking forward to discussing the role at XYZ Corporation.",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-16T02:53:06.993141",
+    "to": "example@email.com",
+    "subject": "Application for Marketing Manager Position",
+    "body": "Dear Hiring Manager, I am excited to apply for the Marketing Manager position at [Company Name]. I have attached my resume and cover letter for your review. Thank you for considering my application. Sincerely, Emily J. Smith",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-16T03:00:06.903804",
+    "to": "kamrun233420@gmail.com",
+    "subject": "Job Application for Web Development Role",
+    "body": "Dear Hiring Manager, I am excited to apply for the web development role at your company. I have attached my resume and cover letter for your review. Thank you for considering my application.",
+    "status": "sent"
+  },
+  {
+    "timestamp": "2026-03-16T03:19:36.303722",
+    "to": "your email address here",
+    "subject": "Application for Remote Frontend Developer Position",
+    "body": "Dear Hiring Manager,\n\nI am excited to apply for the Remote Frontend Developer position at [Company Name]. With my skills in HTML, CSS, JavaScript, and React, I am confident in my ability to deliver high-quality front-end development work.\n\nI have attached my resume and a portfolio of my work for your review.\n\nThank you for considering my application. I look forward to the opportunity to discuss my qualifications further.\n\nBest regards,\nKamrun Nahar\n\n",
+    "status": "error: {'your': (553, b'5.1.3 The recipient address <your> is not a valid RFC 5321 address. For more\\n5.1.3 information, go to\\n5.1.3  https://support.google.com/a/answer/3221692 and review RFC 5321\\n5.1.3 specifications. d2e1a72fcca58-82a06fe211csm11680916b3a.0 - gsmtp')}"
   }
 ]

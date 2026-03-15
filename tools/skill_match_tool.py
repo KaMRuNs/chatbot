@@ -26,6 +26,7 @@ def match_skills(job_description: str, resume_text: str = "") -> str:
         "Identify:\n"
         "1. Which skills and experiences from the resume match the job requirements.\n"
         "2. Which critical skills or experiences are missing from the resume.\n"
+        "3. Provide specific recommendations for learning the missing skills (e.g., suggest 1-2 free courses, YouTube search terms, or platforms like Coursera/Udemy for each missing skill).\n"
         "Provide a concise, clearly formatted summary."
     )
     

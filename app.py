@@ -1,145 +1,175 @@
 import streamlit as st
 import json
 import os
+import uuid
+import re
+import base64
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables at the very beginning
 load_dotenv(override=True)
 
-from agents.rag_agent import build_vector_store
+from agents.rag_agent import build_vector_store, sanitize_text
 from agents.action_agent import action_agent_stream
+from agents.memory_summarizer import compress_session, should_summarize
+from tools.email_tool import set_email_context
 import pypdf
 import io
+import tempfile
+st.set_page_config(
+    page_title="CareerPilot", 
+    page_icon="🤖", 
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
 
-# ---- Page Config ----
-st.set_page_config(page_title="Simple Chatbot", page_icon="🤖", layout="centered")
+# ---- PDF Export Helper ----
+def generate_pdf_bytes(messages: list, title: str = "Chat Export") -> bytes:
+    from fpdf import FPDF
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, title, ln=True, align="C")
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "", 10)
+    for msg in messages:
+        role = "You" if msg["role"] == "user" else "Assistant"
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, f"{role}:", ln=True)
+        pdf.set_font("Helvetica", "", 10)
+        safe_content = msg["content"].encode("latin-1", errors="replace").decode("latin-1")
+        pdf.multi_cell(0, 5, safe_content)
+        pdf.ln(3)
+    return pdf.output(dest='S').encode('latin-1')
 
 # ---- Custom CSS ----
 st.markdown("""
 <style>
-    /* Gemini-inspired Dark Theme */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;700&display=swap');
+    /* ChatGPT-inspired Dark Theme */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
-        background-color: #131314;
+        background-color: #212121;
     }
 
     .stApp {
-        background-color: #131314;
+        background-color: #212121;
     }
 
     /* Minimalist SideBar */
     section[data-testid="stSidebar"] {
-        background-color: #1e1f20 !important;
+        background-color: #171717 !important;
         border-right: 1px solid rgba(255,255,255,0.05);
     }
 
     /* Modern Typography */
     h1 {
-        font-family: 'Outfit', sans-serif;
-        color: #e3e3e3;
-        font-weight: 700;
+        color: #ececec;
+        font-weight: 600;
         letter-spacing: -0.5px;
         margin-bottom: 0px !important;
+        text-align: center;
     }
 
-    .gemini-subheader {
-        font-size: 1.2rem;
-        color: #8e918f;
+    .chatgpt-subheader {
+        font-size: 1rem;
+        color: #b4b4b4;
         margin-bottom: 2rem;
-    }
-
-    /* Agent Badges (Gemini Style) */
-    .agent-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 12px;
-        border-radius: 8px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        margin-bottom: 12px;
-        background: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
-        color: white;
-        box-shadow: 0 0 15px rgba(66, 133, 244, 0.3);
+        text-align: center;
     }
 
     /* Chat Message Bubbles */
     .stChatMessage {
         background-color: transparent !important;
         border: none !important;
-        padding: 20px 0 !important;
+        padding: 12px 0 !important;
         max-width: 800px;
         margin: 0 auto;
     }
 
+    /* Hide Streamlit Default Avatars */
+    .stChatMessage > div:first-child,
+    div[data-testid="stChatMessageAvatar"] img {
+        display: none !important;
+    }
+
     /* User Message Style */
-    div[data-testid="stChatMessageUser"] {
-        background-color: #1e1f20 !important;
-        border-radius: 24px !important;
+    div[data-testid="stChatMessage"]:has(img[src*="user-avatar"]) > div:last-child {
+        background-color: #2f2f2f !important;
+        border-radius: 20px !important;
         padding: 12px 20px !important;
         margin-left: auto;
         width: fit-content;
-        max-width: 80%;
+        max-width: 75%;
+        color: #ececec;
+        font-size: 1rem;
+        line-height: 1.5;
     }
 
     /* Assistant Message Style */
-    div[data-testid="stChatMessageAssistant"] {
+    div[data-testid="stChatMessage"]:has(img[src*="assistant-avatar"]) > div:last-child {
         padding-left: 0 !important;
+        color: #ececec;
+        font-size: 1rem;
+        line-height: 1.6;
+        width: 100%;
     }
 
     /* Chat Input Fixed to Bottom */
     .stChatInputContainer {
-        border-radius: 30px !important;
-        background-color: #1e1f20 !important;
-        border: 1px solid #444746 !important;
+        border-radius: 20px !important;
+        background-color: #2f2f2f !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
         padding: 5px 15px !important;
         transition: border-color 0.3s ease;
     }
 
     .stChatInputContainer:focus-within {
-        border-color: #8ab4f8 !important;
+        border-color: rgba(255,255,255,0.3) !important;
     }
 
     /* Hide redundant elements */
-    #MainMenu, footer, header {visibility: hidden;}
+    /* Hide redundant elements (restoring header for sidebar toggle) */
+    #MainMenu, footer {visibility: hidden;}
     
     /* Scrollbar Styling */
     ::-webkit-scrollbar {
         width: 8px;
     }
     ::-webkit-scrollbar-track {
-        background: #131314;
+        background: #212121;
     }
     ::-webkit-scrollbar-thumb {
-        background: #444746;
+        background: #424242;
         border-radius: 10px;
     }
     ::-webkit-scrollbar-thumb:hover {
-        background: #555;
+        background: #565656;
     }
 
     /* Buttons */
     div[data-testid="stButton"] button {
-        background-color: #1e1f20;
-        border: 1px solid #444746;
-        color: #e3e3e3;
-        border-radius: 20px;
+        background-color: #2f2f2f;
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #ececec;
+        border-radius: 8px;
         padding: 0.5rem 1.5rem;
         transition: all 0.2s;
     }
 
     div[data-testid="stButton"] button:hover {
-        background-color: #333537;
-        border-color: #8ab4f8;
+        background-color: #424242;
+        border-color: rgba(255,255,255,0.2);
     }
 
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Hello, User")
-st.markdown('<div class="gemini-subheader">How can I help you today?</div>', unsafe_allow_html=True)
+st.title("CareerPilot")
+st.markdown('<div class="chatgpt-subheader">Search, Reason, and Act.</div>', unsafe_allow_html=True)
 
 
 def render_chunks(chunks):
@@ -178,50 +208,38 @@ def render_chunks(chunks):
 
 # ---- Sidebar ----
 with st.sidebar:
+    if st.button("➕ New Chat", use_container_width=True):
+        new_id = str(uuid.uuid4())
+        st.session_state.chat_sessions[new_id] = {"title": "New Chat", "messages": [], "updated_at": datetime.now().isoformat()}
+        st.session_state.current_session_id = new_id
+        st.rerun()
+
+    st.header("💬 Chat History")
+    # sort by updated_at descending
+    if "chat_sessions" in st.session_state:
+        sorted_sessions = sorted(st.session_state.chat_sessions.items(), key=lambda x: x[1]['updated_at'], reverse=True)
+        for s_id, s_data in sorted_sessions:
+            title = s_data["title"]
+            # Highlight active session
+            btn_label = f"🟢 {title}" if s_id == st.session_state.current_session_id else f"⚪ {title}"
+            if st.button(btn_label, key=f"btn_{s_id}", use_container_width=True):
+                st.session_state.current_session_id = s_id
+                st.rerun()
+    
+    st.divider()
+    
     st.header("Assistant Control")
     st.divider()
 
-    # Document Upload Section
-    st.subheader("📁 Knowledge Base")
-    uploaded_files = st.file_uploader(
-        "Upload files", type=["pdf", "txt"], accept_multiple_files=True
-    )
-
-    if uploaded_files:
-        if st.button("Process Documents"):
-            with st.spinner("Processing documents..."):
-                try:
-                    st.session_state.vector_store = build_vector_store(uploaded_files)
-                    st.success(f"Processed {len(uploaded_files)} file(s)!")
-                except Exception as e:
-                    st.error(f"Error processing documents: {e}")
-                        
-    # Resume Upload Section
-    st.subheader("📄 Resume (Optional)")
-    st.markdown("Upload your resume to use job matching tools.")
-    resume_file = st.file_uploader("Upload Resume", type=["pdf", "txt"], key="resume_uploader")
-        
-    if resume_file:
-        if st.button("Extract Resume Text"):
-            with st.spinner("Extracting..."):
-                try:
-                    text = ""
-                    if resume_file.name.endswith(".pdf"):
-                        pdf_reader = pypdf.PdfReader(io.BytesIO(resume_file.read()))
-                        for page in pdf_reader.pages:
-                            text += page.extract_text() + "\n"
-                    else:
-                        text = resume_file.read().decode("utf-8")
-                            
-                    st.session_state.resume_text = text
-                    st.success("Resume extracted successfully!")
-                except Exception as e:
-                    st.error(f"Error extracting resume: {e}")
-        
-    if "resume_text" in st.session_state and st.session_state.resume_text:
+    # Resume Context Control
+    st.subheader("📄 Resume Profile")
+    if "resume_text" not in st.session_state:
+        st.markdown("<small><i>Upload your resume in the chat to enable job matching tools.</i></small>", unsafe_allow_html=True)
+    else:
         st.success("Resume loaded and ready for action.")
-        with st.expander("View Extracted Text"):
-            st.text(st.session_state.resume_text[:500] + "...")
+        if st.button("Clear Resume", use_container_width=True):
+             del st.session_state["resume_text"]
+             st.rerun()
 
     # Status & Legend
     st.markdown("---")
@@ -233,66 +251,107 @@ with st.sidebar:
     if "resume_text" in st.session_state:
         st.caption("✅ Resume Background Active")
 
-    st.caption("🛠️ Web, Email, & Alarms are always ON")
+    st.caption("🛠️ Web and Email are always ON")
 
     st.divider()
 
     # Clear chat button
-    if st.button("Clear Chat", use_container_width=True):
-        st.session_state.messages = []
+    if st.button("Clear Current Chat", use_container_width=True):
+        if "current_session_id" in st.session_state:
+            st.session_state.chat_sessions[st.session_state.current_session_id]["messages"] = []
         st.rerun()
 
-    # Export chat button
-    if "messages" in st.session_state and st.session_state.messages:
-        chat_export = ""
-        for msg in st.session_state.messages:
-            role = "You" if msg["role"] == "user" else "Assistant"
-            chat_export += f"**{role}:**\n{msg['content']}\n\n---\n\n"
-        st.download_button(
-            "Export Chat",
-            data=chat_export,
-            file_name="smart_assistant_chat.md",
-            mime="text/markdown",
-            use_container_width=True
-        )
+    # PDF Export button
+    if "current_session_id" in st.session_state:
+        current_messages = st.session_state.chat_sessions[st.session_state.current_session_id]["messages"]
+        if current_messages:
+            try:
+                pdf_bytes = generate_pdf_bytes(
+                    current_messages,
+                    title=st.session_state.chat_sessions[st.session_state.current_session_id].get("title", "Chat Export")
+                )
+                st.download_button(
+                    "📄 Download Chat as PDF",
+                    data=pdf_bytes,
+                    file_name="careerpilot_chat.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+            except Exception:
+                # fpdf fallback
+                chat_export = ""
+                for msg in current_messages:
+                    role = "You" if msg["role"] == "user" else "Assistant"
+                    chat_export += f"{role}:\n{msg['content']}\n\n---\n\n"
+                st.download_button(
+                    "💾 Export Chat",
+                    data=chat_export,
+                    file_name="careerpilot_chat.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
 
     # Move technical info to bottom
     st.markdown('<div style="margin-top: 50px;"></div>', unsafe_allow_html=True)
-    st.markdown('<p class="sidebar-info">Engine: GPT-OSS-120B<br>Model: Groq Llama3-70b-Tool-Use</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sidebar-info">Engine: Groq Cloud (Open-Source)<br>Model: Llama 3.1 8B Instant</p>', unsafe_allow_html=True)
 
-# ---- Initialize Chat History ----
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ---- Initialize Chat History State ----
+if "chat_sessions" not in st.session_state:
+    default_id = str(uuid.uuid4())
+    st.session_state.chat_sessions = {
+        default_id: {"title": "New Chat", "messages": [], "updated_at": datetime.now().isoformat()}
+    }
+    st.session_state.current_session_id = default_id
 
-messages = st.session_state.messages
+current_id = st.session_state.current_session_id
+messages = st.session_state.chat_sessions[current_id]["messages"]
 
-# ---- Poll for Fired Alarms ----
-ALARM_FILE = os.path.join(os.path.dirname(__file__), "pending_alarms.json")
-if os.path.exists(ALARM_FILE):
-    try:
-        with open(ALARM_FILE, "r", encoding="utf-8") as f:
-            alarms = json.load(f)
-        if alarms:
-            for alarm in alarms:
-                st.toast(f"⏰ Alarm: {alarm['message']}", icon="⏰")
-            # Clear the file after showing
-            with open(ALARM_FILE, "w", encoding="utf-8") as f:
-                json.dump([], f)
-    except (json.JSONDecodeError, KeyError):
-        pass
+# ---- Custom Avatars for CSS Targeting ----
+USER_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' data-id='user-avatar'/%3E"
+ASSISTANT_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' data-id='assistant-avatar'/%3E"
 
 # ---- Display Chat History ----
-for message in messages:
-    with st.chat_message(message["role"]):
-        # Show agent badge on assistant messages
-        if message["role"] == "assistant":
-            st.markdown(
-                f'<span class="agent-badge">Smart Assistant</span>',
-                unsafe_allow_html=True,
-            )
+for i, message in enumerate(messages):
+    avatar = USER_AVATAR if message["role"] == "user" else ASSISTANT_AVATAR
+    with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
+        
+        # Check if response contains a calendar event file path and show download button
+        if message["role"] == "assistant":
+            ics_match = re.search(r'ICS_FILE_PATH:(.+\.ics)', message["content"])
+            if ics_match:
+                ics_path = ics_match.group(1).strip()
+                if os.path.exists(ics_path):
+                    with open(ics_path, "rb") as f:
+                        st.download_button(
+                            "📅 Add to Calendar",
+                            data=f.read(),
+                            file_name=os.path.basename(ics_path),
+                            mime="text/calendar",
+                            key=f"cal_dl_{i}"
+                        )
+            
+            # Copy response button — Base64 encoding prevents ANY quote/character clashing in HTML attributes
+            b64_content = base64.b64encode(message["content"].encode("utf-8")).decode("utf-8")
+            st.markdown(
+                f'''<button onclick="(function(){{
+                    var t=document.createElement('textarea');
+                    t.value=atob('{b64_content}');
+                    document.body.appendChild(t);
+                    t.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(t);
+                    this.textContent='✅ Copied!';
+                    setTimeout(()=>this.textContent='📋 Copy',2000);
+                }}).call(this)"
+                    style="background:transparent;border:1px solid rgba(255,255,255,0.15);
+                           color:#aaa;border-radius:6px;padding:3px 10px;font-size:0.75rem;
+                           cursor:pointer;margin-top:4px;">
+                    📋 Copy
+                </button>''',
+                unsafe_allow_html=True
+            )
 
-        # Show tool info if available
         if message.get("tool_calls"):
             with st.expander("🛠️ Internal Logic & Tools"):
                 for entry in message["tool_calls"]:
@@ -303,37 +362,156 @@ for message in messages:
                         st.markdown(f"**Result from** `{entry['tool_result']}`:")
                         st.code(entry["output"], language=None)
 
-# ---- Handle User Input ----
-if prompt := st.chat_input("Ask me anything..."):
-    # Show user message
-    messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # Generate streamed response
-    with st.chat_message("assistant"):
-        st.markdown(
-            f'<span class="agent-badge">Smart Assistant</span>',
-            unsafe_allow_html=True,
-        )
-
+# ---- Handle User Input (with voice + file support) ----
+if prompt := st.chat_input("Ask me anything...", accept_file="multiple", accept_audio=True):
+    
+    # Process dynamically uploaded files
+    text_input = prompt.text if hasattr(prompt, "text") and prompt.text else ""
+    
+    # Handle voice audio transcription
+    if hasattr(prompt, "audio") and prompt.audio and not text_input:
         try:
-            with st.spinner("🤔 Assistant is thinking and acting..."):
+            from groq import Groq
+            import time
+            audio_bytes = prompt.audio.read()
+            tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+            tmp_audio.write(audio_bytes)
+            tmp_audio.close()
+            
+            groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            
+            # Simple retry loop for voice transcription (Groq free tier has tight limits)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    with open(tmp_audio.name, "rb") as af:
+                        transcription = groq_client.audio.transcriptions.create(
+                            model="whisper-large-v3",
+                            file=af,
+                            response_format="text"
+                        )
+                    text_input = transcription if isinstance(transcription, str) else transcription.text
+                    break
+                except Exception as e:
+                    if "429" in str(e) and attempt < max_retries - 1:
+                        time.sleep(2 * (attempt + 1))
+                        continue
+                    raise e
+            
+            os.unlink(tmp_audio.name)
+        except Exception as e:
+            text_input = f"[Voice transcription failed: {str(e)}]"
+    
+    if not text_input and not (hasattr(prompt, "files") and prompt.files):
+        text_input = "Please analyze my uploaded files."
+    elif not text_input:
+        text_input = "Please analyze my uploaded files."
+    
+    uploaded_files = prompt.files if hasattr(prompt, "files") and prompt.files else []
+    
+    internal_sys_prompt = ""
+    docs_to_rag = []
+    current_file_paths = []
+    
+    for f in uploaded_files:
+        ext = os.path.splitext(f.name)[1].lower()
+        
+        # Save EVERY file to a temp location so it can be attached to emails
+        # Use a safe filename from the upload
+        safe_name = "".join(c for c in f.name if c.isalnum() or c in "._-").strip()
+        tmp_dir = tempfile.gettempdir()
+        tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex[:8]}_{safe_name}")
+        with open(tmp_path, "wb") as tmp_f:
+            tmp_f.write(f.getbuffer())
+        current_file_paths.append(tmp_path)
+        
+        # Determine if it's an image or document
+        if ext in ['.png', '.jpg', '.jpeg']:
+            st.session_state.uploaded_image_path = tmp_path
+            internal_sys_prompt += f"\n\n[SYSTEM NOTIFICATION]: User attached image: {tmp_path}. Pass this to `extract_text_from_image` tool."
+            
+        else:
+            if "resume" in f.name.lower():
+                # If the file is named resume, extract its text into session state for specific job tools
+                try:
+                    f.seek(0)  # Reset buffer position
+                    text = ""
+                    if ext == ".pdf":
+                        pdf_reader = pypdf.PdfReader(io.BytesIO(f.read()))
+                        for page in pdf_reader.pages:
+                            text += page.extract_text() + "\n"
+                    else:
+                        text = f.read().decode("utf-8")
+                    st.session_state.resume_text = sanitize_text(text)
+                    internal_sys_prompt += f"\n\n[SYSTEM NOTIFICATION]: User uploaded a new resume. path: {tmp_path}"
+                except Exception as e:
+                    st.error(f"Failed to read resume for string extraction: {e}")
+            
+            # Normal document for RAG (All PDFs and TXTs go here, including resumes)
+            if ext in ['.pdf', '.txt']:
+                f.seek(0) # Reset buffer so PyPDFLoader can read it cleanly later
+                docs_to_rag.append(f)
+
+    if current_file_paths:
+        internal_sys_prompt += "\n\n[AVAILABLE FILES FOR ATTACHMENT]:\n"
+        for p in current_file_paths:
+            internal_sys_prompt += f"- {os.path.basename(p)}: {p}\n"
+        internal_sys_prompt += "If the user asks to 'send this file' or 'mail the resume', use these absolute paths in the `attachments` argument of `send_email`."
+            
+    if docs_to_rag:
+        with st.spinner("Processing documents into Knowledge Base..."):
+            try:
+                st.session_state.vector_store = build_vector_store(docs_to_rag)
+                internal_sys_prompt += f"\n\n[SYSTEM NOTIFICATION]: {len(docs_to_rag)} new document(s) added to the Knowledge Base. You can search them with the RAG tool."
+            except Exception as e:
+                st.error(f"Error processing documents: {e}")
+
+    # Show user message
+    messages.append({"role": "user", "content": text_input})
+    
+    # Update title if it's the first message
+    if len(messages) == 1 and st.session_state.chat_sessions[current_id]["title"] == "New Chat":
+        st.session_state.chat_sessions[current_id]["title"] = text_input[:30] + ("..." if len(text_input) > 30 else "")
+        
+    st.session_state.chat_sessions[current_id]["updated_at"] = datetime.now().isoformat()
+    
+    with st.chat_message("user", avatar=USER_AVATAR):
+        st.markdown(text_input)
+        if uploaded_files:
+            st.caption(f"📎 Attached {len(uploaded_files)} file(s)")
+
+    # Inject email credentials into the email tool before running agent
+    set_email_context(
+        st.session_state.get("user_email", ""),
+        st.session_state.get("user_email_password", "")
+    )
+    
+    # Generate streamed response
+    with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
+        try:
+            with st.spinner("Processing..."):
                 # Use a dictionary to store mutable state from inside the generator
                 stream_state = {"tool_calls_info": None, "final_response": ""}
 
                 def process_stream():
-                    resume_text = st.session_state.get("resume_text", None)
+                    # Combine contexts if they exist
+                    resume_text = st.session_state.get("resume_text", "")
+                    
+                    context_str = internal_sys_prompt
+                    if resume_text:
+                        context_str += "\n\n[Current Resume Data]:\n" + resume_text
+                        
                     vector_store = st.session_state.get("vector_store", None)
-                    # Use Streamlit session ID for consistent LangGraph thread ID
-                    session_id = st.runtime.scriptrunner.get_script_run_ctx().session_id
+                    session_id = current_id
+                    convo_summary = st.session_state.chat_sessions[current_id].get("summary", "")
                     
                     for event in action_agent_stream(
-                        prompt, 
+                        text_input, 
                         messages[:-1], 
-                        resume_text=resume_text, 
+                        resume_text=context_str if context_str else None, 
                         vector_store=vector_store,
-                        thread_id=session_id
+                        thread_id=session_id,
+                        conversation_summary=convo_summary if convo_summary else None,
                     ):
                         if isinstance(event, dict) and event.get("type") == "tool_calls":
                             stream_state["tool_calls_info"] = event["data"]
@@ -356,18 +534,30 @@ if prompt := st.chat_input("Ask me anything..."):
                             st.markdown(f"**Result from** `{entry['tool_result']}`:")
                             st.code(entry["output"], language=None)
 
-            # We don't need st.markdown(response) here anymore since write_stream rendered it
             messages.append({
                 "role": "assistant",
                 "content": response,
                 "tool_calls": tool_calls_info,
             })
+            
+            # Check if calendar event was created — store file path for download
+            if response and "ICS_FILE_PATH:" in response:
+                ics_match = re.search(r'ICS_FILE_PATH:(.+\.ics)', response)
+                if ics_match:
+                    st.session_state.pending_calendar_file = ics_match.group(1).strip()
+            
+            # Auto memory-summarize if conversation is too long
+            if should_summarize(messages):
+                with st.spinner("🧠 Summarizing memory..."):
+                    st.session_state.chat_sessions[current_id] = compress_session(
+                        st.session_state.chat_sessions[current_id]
+                    )
 
         except Exception as e:
             error_msg = str(e)
-            if "rate_limit" in error_msg.lower() or "429" in error_msg:
-                st.error("Rate limit reached. Please wait a moment and try again.")
-            elif "api_key" in error_msg.lower() or "401" in error_msg:
-                st.error("Invalid API key. Please check your GROQ_API_KEY in the .env file.")
+            if "rate_limit" in error_msg.lower() or "429" in error_msg or "quota" in error_msg.lower():
+                st.error("📉 API Rate Limit Reached. The AI is a bit busy right now. Please wait 10-15 seconds and try again!")
+            elif "api_key" in error_msg.lower() or "401" in error_msg or "api key not valid" in error_msg.lower():
+                st.error("❌ Invalid API key. Please check your GEMINI_API_KEY in the .env file.")
             else:
                 st.error(f"Something went wrong: {error_msg}")

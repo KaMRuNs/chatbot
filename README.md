@@ -1,6 +1,6 @@
 # Simple Chatbot - LangChain + Streamlit
 
-Welcome! In this project, you will build a sophisticated **Unified Smart Assistant** that can search the web, answer questions from documents (RAG), and perform real-world actions like sending emails or setting alarms—all within a single, persistent conversation using **LangGraph**.
+Welcome! In this project, you will build a sophisticated **Unified Smart Assistant** that can search the web, answer questions from documents (RAG), and perform real-world actions like sending emails—all within a single, persistent conversation using **LangGraph**.
 
 ## What You Will Learn
 

@@ -9,11 +9,23 @@ import re
 import os
 
 
-def clean_text(text: str) -> str:
-    """Normalizes whitespace from PDF extraction (removes vertical word stacking)."""
-    text = re.sub(r"\n+", " ", text)       # Replace newlines with spaces
-    text = re.sub(r"\s{2,}", " ", text)    # Collapse multiple spaces
+def sanitize_text(text: str) -> str:
+    """Removes all non-printable characters and null bytes to prevent JSON parsing errors."""
+    if not text:
+        return ""
+    # Remove null bytes and other common problematic control characters
+    text = text.replace("\x00", "").replace("\x0b", "").replace("\x0c", "")
+    # Keep only printable characters (ASCII range 32-126 + common whitespace like newlines/tabs)
+    # This prevents emojis and non-standard symbols from breaking older JSON parsers if needed,
+    # though modern ones handle them, Groq/Llama can be picky with huge strings.
+    # More importantly, it collapses weird whitespace that confuses some regex.
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xff]', '', text)
+    text = re.sub(r'\s+', ' ', text)  # Collapse all whitespace to single spaces
     return text.strip()
+
+def clean_text(text: str) -> str:
+    """Alias for sanitize_text for backward compatibility."""
+    return sanitize_text(text)
 
 
 def build_vector_store(uploaded_files):
@@ -42,7 +54,7 @@ def build_vector_store(uploaded_files):
         os.unlink(tmp_path)
 
     # Split documents into small chunks for better retrieval
-    splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_documents(all_docs)
 
     # Create embeddings and vector store
