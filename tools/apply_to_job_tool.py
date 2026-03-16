@@ -9,11 +9,15 @@ Apply to Job Tool — A high-level orchestration tool that:
 import os
 from langchain_core.tools import tool
 from serpapi import GoogleSearch
+from langchain_community.tools import DuckDuckGoSearchRun
 from dotenv import load_dotenv
-from utils.llm import get_llm
+from utils.llm import get_llm, get_model_candidates, is_token_limit_error
 from langchain_core.messages import HumanMessage, SystemMessage
 
 load_dotenv(override=True)
+
+MAX_JOB_DESC_CHARS = 1500
+MAX_RESUME_CHARS = 2500
 
 
 def _search_jobs_internal(query: str, location: str = "") -> list:
@@ -31,26 +35,44 @@ def _search_jobs_internal(query: str, location: str = "") -> list:
         return []
 
 
+def _free_job_search_fallback(query: str, location: str = "") -> str:
+    """Fallback search text when SerpApi is unavailable."""
+    search_query = f"{query} jobs {location}".strip()
+    try:
+        return DuckDuckGoSearchRun().invoke(search_query)
+    except Exception as e:
+        return f"Unable to run free fallback search: {e}"
+
+
 def _generate_cover_letter_internal(job_description: str, resume_text: str) -> str:
     """Internal helper to generate cover letter using LLM."""
-    llm = get_llm()
+    trimmed_job_description = job_description[:MAX_JOB_DESC_CHARS]
+    trimmed_resume_text = resume_text[:MAX_RESUME_CHARS]
     system_prompt = (
         "You are an expert career coach. Write a concise, compelling, and professional cover letter "
         "based on the resume and job description provided. Leave [Company Name] as a placeholder if not given."
     )
     user_prompt = (
-        f"--- JOB DESCRIPTION ---\n{job_description}\n\n"
-        f"--- RESUME ---\n{resume_text}\n\n"
+        f"--- JOB DESCRIPTION ---\n{trimmed_job_description}\n\n"
+        f"--- RESUME ---\n{trimmed_resume_text}\n\n"
         "Write the cover letter:"
     )
-    try:
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ])
-        return response.content
-    except Exception as e:
-        return f"Failed to generate cover letter: {e}"
+    last_error = None
+    for model_name in get_model_candidates():
+        llm = get_llm(model_name=model_name)
+        try:
+            response = llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ])
+            return response.content
+        except Exception as e:
+            last_error = e
+            if is_token_limit_error(e):
+                continue
+            return f"Failed to generate cover letter: {e}"
+
+    return f"Failed to generate cover letter: {last_error}"
 
 
 def _send_email_internal(to: str, subject: str, body: str) -> str:
@@ -124,20 +146,26 @@ def apply_to_job(
     # Step 1: Search for jobs
     jobs = _search_jobs_internal(job_query, location)
     if not jobs:
-        return f"❌ Could not find any jobs for '{job_query}'. Try a different query or check your SerpApi key."
+        fallback_results = _free_job_search_fallback(job_query, location)
+        return (
+            f"❌ Could not find structured jobs for '{job_query}' via SerpApi.\n\n"
+            "✅ Free fallback web results:\n"
+            f"{fallback_results}\n\n"
+            "Tip: Add SERPAPI_API_KEY for richer job cards and direct apply links."
+        )
 
     # Step 2: Pick the first/best job
     target_job = jobs[0]
     title = target_job.get("title", "Unknown Title")
     company = target_job.get("company_name", "Unknown Company")
     loc = target_job.get("location", location or "Not specified")
-    description = target_job.get("description", "")[:1500]
+    description = target_job.get("description", "")[:MAX_JOB_DESC_CHARS]
     apply_link = target_job.get("share_link", "No link available")
 
     # Step 3: Generate cover letter
     cover_letter = _generate_cover_letter_internal(
         job_description=f"{title} at {company}\n\n{description}",
-        resume_text=resume_text
+        resume_text=resume_text[:MAX_RESUME_CHARS]
     )
 
     # Step 4: Send email (or report the cover letter)

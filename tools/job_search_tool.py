@@ -5,6 +5,7 @@ Job Search Tool — Connects to SerpApi Google Jobs API to find job listings.
 import os
 from langchain_core.tools import tool
 from serpapi import GoogleSearch
+from langchain_community.tools import DuckDuckGoSearchRun
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -20,14 +21,16 @@ def search_jobs(query: str, location: str = "") -> str:
     """
     api_key = os.getenv("SERPAPI_API_KEY")
     if not api_key:
-        env_path = os.path.abspath(".env")
-        exists = os.path.exists(env_path)
-        return (
-            f"Error: SERPAPI_API_KEY not found in environment.\n"
-            f"Looking for .env at: {env_path}\n"
-            f".env file exists: {exists}\n"
-            "Please ensure the key is correctly set in your .env file."
-        )
+        fallback_query = f"{query} jobs {location}".strip()
+        try:
+            search = DuckDuckGoSearchRun()
+            results = search.invoke(fallback_query)
+            return (
+                "SerpApi key not configured. Showing free web results instead:\n\n"
+                f"{results}"
+            )
+        except Exception as e:
+            return f"Error searching jobs with free fallback: {e}"
         
     params = {
       "engine": "google_jobs",

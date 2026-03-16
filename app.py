@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 # Load environment variables at the very beginning
 load_dotenv(override=True)
 
+ACTIVE_GROQ_MODEL = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+
 from agents.rag_agent import build_vector_store, sanitize_text
 from agents.action_agent import action_agent_stream
 from agents.memory_summarizer import compress_session, should_summarize
@@ -171,6 +173,19 @@ st.markdown("""
 st.title("CareerPilot")
 st.markdown('<div class="chatgpt-subheader">Search, Reason, and Act.</div>', unsafe_allow_html=True)
 
+SUPPORTED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}
+
+
+def normalize_response_format(text: str) -> str:
+    """Clean noisy spacing and bullet formatting while preserving content."""
+    if not text:
+        return text
+    cleaned = text.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"\n\s*[-*]\s*", "\n- ", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip()
+
 
 def render_chunks(chunks):
     """Renders retrieved chunks with relevance scores and metadata."""
@@ -293,7 +308,10 @@ with st.sidebar:
 
     # Move technical info to bottom
     st.markdown('<div style="margin-top: 50px;"></div>', unsafe_allow_html=True)
-    st.markdown('<p class="sidebar-info">Engine: Groq Cloud (Open-Source)<br>Model: Llama 3.1 8B Instant</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="sidebar-info">Engine: Groq Cloud (Open-Source)<br>Model: {ACTIVE_GROQ_MODEL}</p>',
+        unsafe_allow_html=True
+    )
 
 # ---- Initialize Chat History State ----
 if "chat_sessions" not in st.session_state:
@@ -426,9 +444,17 @@ if prompt := st.chat_input("Ask me anything...", accept_file="multiple", accept_
         current_file_paths.append(tmp_path)
         
         # Determine if it's an image or document
-        if ext in ['.png', '.jpg', '.jpeg']:
+        if ext in SUPPORTED_IMAGE_EXTENSIONS:
             st.session_state.uploaded_image_path = tmp_path
-            internal_sys_prompt += f"\n\n[SYSTEM NOTIFICATION]: User attached image: {tmp_path}. Pass this to `extract_text_from_image` tool."
+            safe_path = json.dumps(tmp_path)
+            internal_sys_prompt += (
+                "\n\n[IMAGE ATTACHMENT]\n"
+                f"- Path: {safe_path}\n"
+                "- Tool: extract_text_from_image\n"
+                "- Instruction: Run OCR on this image before answering image-content questions."
+            )
+            if ext in ['.webp']:
+                internal_sys_prompt += "\n- Warning: WEBP OCR quality may vary by image compression."
             
         else:
             if "resume" in f.name.lower():
@@ -494,12 +520,8 @@ if prompt := st.chat_input("Ask me anything...", accept_file="multiple", accept_
                 stream_state = {"tool_calls_info": None, "final_response": ""}
 
                 def process_stream():
-                    # Combine contexts if they exist
                     resume_text = st.session_state.get("resume_text", "")
-                    
-                    context_str = internal_sys_prompt
-                    if resume_text:
-                        context_str += "\n\n[Current Resume Data]:\n" + resume_text
+                    system_context = internal_sys_prompt
                         
                     vector_store = st.session_state.get("vector_store", None)
                     session_id = current_id
@@ -508,7 +530,8 @@ if prompt := st.chat_input("Ask me anything...", accept_file="multiple", accept_
                     for event in action_agent_stream(
                         text_input, 
                         messages[:-1], 
-                        resume_text=context_str if context_str else None, 
+                        resume_text=resume_text if resume_text else None,
+                        extra_system_context=system_context if system_context else None,
                         vector_store=vector_store,
                         thread_id=session_id,
                         conversation_summary=convo_summary if convo_summary else None,
@@ -521,6 +544,7 @@ if prompt := st.chat_input("Ask me anything...", accept_file="multiple", accept_
                 
                 # Write stream expects a generator of strings
                 response = st.write_stream(process_stream())
+                response = normalize_response_format(response)
 
             # Show tool calls in an expander
             tool_calls_info = stream_state["tool_calls_info"]

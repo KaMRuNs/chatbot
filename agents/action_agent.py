@@ -7,7 +7,7 @@ Uses LangGraph's create_react_agent to bind the LLM with custom tools
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
-from utils.llm import get_llm
+from utils.llm import get_llm, get_model_candidates, is_token_limit_error
 from tools.email_tool import send_email
 from tools.job_search_tool import search_jobs
 from tools.skill_match_tool import match_skills
@@ -35,10 +35,16 @@ SYSTEM_PROMPT = (
     "- Output tool calls IMMEDIATELY without any conversational filler or prefaces.\n\n"
     "OPERATIONAL RULES:\n"
     "- If a question can be answered from docs, use `search_uploaded_documents`.\n"
+    "- If an image is attached, call `extract_text_from_image` first, then answer from the extracted text.\n"
     "- If a question is about current events, use `internet_search`.\n"
     "- If the user says 'hi' or just chats, respond naturally without using tools.\n"
     "- IMPORTANT: Provide all required arguments for tools from the context provided below.\n"
-    "- Be helpful, concise, and professional."
+    "- Be helpful, concise, and professional.\n\n"
+    "FINAL ANSWER FORMAT (especially for document/image analysis):\n"
+    "1) Direct Answer: 1-3 lines.\n"
+    "2) Key Evidence: bullet points.\n"
+    "3) Sources: bullet points with filename/page when available.\n"
+    "If evidence is weak, explicitly say so and ask one focused follow-up question."
 )
 
 # Base tools
@@ -50,21 +56,32 @@ BASE_TOOLS = [
     extract_text_from_image
 ]
 
+RESUME_INTENT_HINTS = (
+    "resume", "cv", "cover letter", "job", "apply", "application", "skills", "linkedin"
+)
+
+
+def should_inject_resume_context(query: str) -> bool:
+    """Inject larger resume context only for career-related intents."""
+    if not query:
+        return False
+    q = query.lower()
+    return any(hint in q for hint in RESUME_INTENT_HINTS)
+
 
 def action_agent_stream(
     query: str, 
     chat_history: list = None, 
     resume_text: str = None, 
+    extra_system_context: str = None,
     vector_store = None,
     thread_id: str = "default_thread",
     conversation_summary: str = None,
 ):
     """Runs the unified smart agent and streams output."""
-    llm = get_llm()
-
     messages = []
     if chat_history:
-        for msg in chat_history[-6:]:
+        for msg in chat_history[-4:]:
             if msg["role"] == "user":
                 messages.append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
@@ -75,48 +92,63 @@ def action_agent_stream(
     current_system_prompt = SYSTEM_PROMPT
     if conversation_summary:
         current_system_prompt += f"\n\nEarlier Summary: {conversation_summary}"
-    if resume_text:
-        current_system_prompt += f"\n\nUser Data Context:\n{resume_text}"
+    if extra_system_context:
+        current_system_prompt += f"\n\nSystem Context:\n{extra_system_context}"
+    if resume_text and should_inject_resume_context(query):
+        current_system_prompt += f"\n\nUser Data Context:\n{resume_text[:1200]}"
 
     rag_tool = create_retrieval_tool(vector_store)
     current_tools = list(BASE_TOOLS) + [rag_tool]
 
-    agent = create_react_agent(
-        model=llm,
-        tools=current_tools,
-        prompt=current_system_prompt,
-    )
+    last_error = None
+    for model_name in get_model_candidates():
+        llm = get_llm(model_name=model_name, document_mode=bool(vector_store))
+        agent = create_react_agent(
+            model=llm,
+            tools=current_tools,
+            prompt=current_system_prompt,
+        )
 
-    tool_calls_log = []
-    final_response = ""
+        tool_calls_log = []
+        final_response = ""
 
-    # Use 'updates' mode for stable result extraction
-    for event in agent.stream({"messages": messages}, stream_mode="updates"):
-        for node_name, node_output in event.items():
-            msgs = node_output.get("messages", [])
-            if not isinstance(msgs, list): msgs = [msgs]
-            
-            for msg in msgs:
-                # 1. Capture tool calls from the agent
-                if node_name == "agent" and hasattr(msg, "tool_calls") and msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        tool_calls_log.append({"tool": tc["name"], "args": tc["args"]})
-                
-                # 2. Capture results from tools
-                if node_name == "tools" and msg.type == "tool":
-                    tool_calls_log.append({"tool_result": msg.name, "output": msg.content})
+        try:
+            # Use 'updates' mode for stable result extraction
+            for event in agent.stream({"messages": messages}, stream_mode="updates"):
+                for node_name, node_output in event.items():
+                    msgs = node_output.get("messages", [])
+                    if not isinstance(msgs, list):
+                        msgs = [msgs]
 
-                # 3. Capture final text from the agent
-                # AI messages without tool calls are the final answer
-                if node_name == "agent" and msg.type == "ai" and msg.content:
-                    if not hasattr(msg, "tool_calls") or not msg.tool_calls:
-                        final_response = msg.content
+                    for msg in msgs:
+                        # 1. Capture tool calls from the agent
+                        if node_name == "agent" and hasattr(msg, "tool_calls") and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                tool_calls_log.append({"tool": tc["name"], "args": tc["args"]})
 
-        # Yield tool log to update UI expander
-        if tool_calls_log:
-            yield {"type": "tool_calls", "data": list(tool_calls_log)}
+                        # 2. Capture results from tools
+                        if node_name == "tools" and msg.type == "tool":
+                            tool_calls_log.append({"tool_result": msg.name, "output": msg.content})
 
-    # Finally yield character-by-character for st.write_stream
-    if final_response:
-        for char in final_response:
-            yield char
+                        # 3. Capture final text from the agent
+                        if node_name == "agent" and msg.type == "ai" and msg.content:
+                            if not hasattr(msg, "tool_calls") or not msg.tool_calls:
+                                final_response = msg.content
+
+                # Yield tool log to update UI expander
+                if tool_calls_log:
+                    yield {"type": "tool_calls", "data": list(tool_calls_log)}
+
+            # Finally yield character-by-character for st.write_stream
+            if final_response:
+                for char in final_response:
+                    yield char
+            return
+        except Exception as e:
+            last_error = e
+            if is_token_limit_error(e):
+                continue
+            raise
+
+    if last_error:
+        raise last_error

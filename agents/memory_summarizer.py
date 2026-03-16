@@ -3,11 +3,12 @@ Memory Summarizer — Compresses long chat histories into a concise running summ
 Called from app.py when message count exceeds the configured threshold.
 """
 
-from utils.llm import get_llm
+from utils.llm import get_llm, get_model_candidates, is_token_limit_error
 from langchain_core.messages import HumanMessage, SystemMessage
 
-SUMMARIZE_THRESHOLD = 12  # Summarize when chat exceeds this many messages
+SUMMARIZE_THRESHOLD = 18  # Summarize when chat exceeds this many messages
 KEEP_RECENT = 6           # Always keep these many recent messages intact
+SUMMARY_CHAR_CAP = 1200   # Prevent summary growth from increasing prompt size over time
 
 
 def should_summarize(messages: list) -> bool:
@@ -25,8 +26,6 @@ def summarize_messages(messages: list) -> str:
     Returns:
         A concise text summary of the conversation.
     """
-    llm = get_llm()
-
     # Format messages into a readable transcript
     transcript = ""
     for msg in messages:
@@ -45,14 +44,22 @@ def summarize_messages(messages: list) -> str:
 
     user_prompt = f"Summarize this conversation:\n\n{transcript}"
 
-    try:
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ])
-        return response.content.strip()
-    except Exception as e:
-        return f"[Summary unavailable: {e}]"
+    last_error = None
+    for model_name in get_model_candidates():
+        llm = get_llm(model_name=model_name)
+        try:
+            response = llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ])
+            return response.content.strip()
+        except Exception as e:
+            last_error = e
+            if is_token_limit_error(e):
+                continue
+            return f"[Summary unavailable: {e}]"
+
+    return f"[Summary unavailable: {last_error}]"
 
 
 def compress_session(session: dict) -> dict:
@@ -83,6 +90,6 @@ def compress_session(session: dict) -> dict:
     else:
         combined = new_summary_text
 
-    session["summary"] = combined
+    session["summary"] = combined[:SUMMARY_CHAR_CAP]
     session["messages"] = to_keep
     return session

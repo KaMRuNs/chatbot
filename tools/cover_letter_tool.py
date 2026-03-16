@@ -3,8 +3,11 @@ Cover Letter Tool — Generates a personalized cover letter.
 """
 
 from langchain_core.tools import tool
-from utils.llm import get_llm
+from utils.llm import get_llm, get_model_candidates, is_token_limit_error
 from langchain_core.messages import HumanMessage, SystemMessage
+
+MAX_JOB_DESC_CHARS = 1500
+MAX_RESUME_CHARS = 2500
 
 @tool
 def generate_cover_letter(job_description: str, resume_text: str = "") -> str:
@@ -17,9 +20,10 @@ def generate_cover_letter(job_description: str, resume_text: str = "") -> str:
     """
     if not resume_text:
         return "Error: No resume text provided. Please upload a resume first."
+
+    trimmed_job_description = job_description[:MAX_JOB_DESC_CHARS]
+    trimmed_resume_text = resume_text[:MAX_RESUME_CHARS]
         
-    llm = get_llm()
-    
     system_prompt = (
         "You are an expert career coach and copywriter. "
         "Write a compelling, professional, and personalized cover letter. "
@@ -28,16 +32,24 @@ def generate_cover_letter(job_description: str, resume_text: str = "") -> str:
     )
     
     user_prompt = (
-        f"--- JOB DESCRIPTION ---\n{job_description}\n\n"
-        f"--- RESUME ---\n{resume_text}\n\n"
+        f"--- JOB DESCRIPTION ---\n{trimmed_job_description}\n\n"
+        f"--- RESUME ---\n{trimmed_resume_text}\n\n"
         "Please draft the cover letter."
     )
     
-    try:
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ])
-        return response.content
-    except Exception as e:
-        return f"Error generating cover letter: {str(e)}"
+    last_error = None
+    for model_name in get_model_candidates():
+        llm = get_llm(model_name=model_name)
+        try:
+            response = llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ])
+            return response.content
+        except Exception as e:
+            last_error = e
+            if is_token_limit_error(e):
+                continue
+            return f"Error generating cover letter: {str(e)}"
+
+    return f"Error generating cover letter: {str(last_error)}"

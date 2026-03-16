@@ -1,10 +1,97 @@
 from langchain_core.tools import tool
-from utils.llm import get_llm
-from langchain_core.messages import HumanMessage, SystemMessage
 import os
+import requests
 
-from langchain_community.tools import DuckDuckGoSearchRun
 from serpapi import GoogleSearch
+
+
+def _safe_text(value, default: str) -> str:
+    """Convert arbitrary values to readable text without raising formatting errors."""
+    if value is None:
+        return default
+    try:
+        text = str(value).strip()
+        return text if text else default
+    except Exception:
+        return default
+
+
+def _run_duckduckgo_instant_api(query: str, max_results: int = 5) -> str:
+    """Fallback DuckDuckGo search via instant answer API when ddgs fails."""
+    response = requests.get(
+        "https://api.duckduckgo.com/",
+        params={
+            "q": query,
+            "format": "json",
+            "no_html": 1,
+            "skip_disambig": 1,
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+    payload = response.json()
+
+    formatted = []
+
+    answer = _safe_text(payload.get("Answer") or payload.get("AbstractText"), "")
+    answer_url = _safe_text(payload.get("AbstractURL"), "")
+    if answer:
+        line = f"1. Instant Answer\n   Link: {answer_url or 'No URL'}\n   Snippet: {answer}"
+        formatted.append(line)
+
+    topics = payload.get("RelatedTopics") or []
+    rank = len(formatted) + 1
+    for topic in topics:
+        if rank > max_results:
+            break
+
+        if isinstance(topic, dict) and topic.get("Topics"):
+            for nested in topic.get("Topics", []):
+                if rank > max_results:
+                    break
+                title = _safe_text(nested.get("Text"), "No title")
+                link = _safe_text(nested.get("FirstURL"), "No URL")
+                formatted.append(f"{rank}. {title}\n   Link: {link}\n   Snippet: {title}")
+                rank += 1
+            continue
+
+        if isinstance(topic, dict):
+            title = _safe_text(topic.get("Text"), "No title")
+            link = _safe_text(topic.get("FirstURL"), "No URL")
+            formatted.append(f"{rank}. {title}\n   Link: {link}\n   Snippet: {title}")
+            rank += 1
+
+    if not formatted:
+        return "No relevant web results found."
+
+    return "\n\n".join(formatted[:max_results])
+
+
+def _run_duckduckgo_search(query: str, max_results: int = 5) -> str:
+    """Run DuckDuckGo text search with compatibility across ddgs package variants."""
+    # Newer implementations use the standalone ddgs package.
+    try:
+        from ddgs import DDGS  # type: ignore
+    except Exception:
+        # Older environments may still provide DDGS via duckduckgo_search.
+        from duckduckgo_search import DDGS  # type: ignore
+
+    results = []
+    with DDGS() as ddgs:
+        for item in ddgs.text(query, max_results=max_results):
+            results.append(item)
+
+    if not results:
+        return "No relevant web results found."
+
+    formatted = []
+    for index, item in enumerate(results[:max_results], start=1):
+        title = _safe_text(item.get("title"), "No title")
+        link = _safe_text(item.get("href") or item.get("url"), "No URL")
+        snippet = _safe_text(item.get("body") or item.get("snippet"), "No snippet")
+        formatted.append(f"{index}. {title}\n   Link: {link}\n   Snippet: {snippet}")
+
+    return "\n\n".join(formatted)
 
 @tool
 def internet_search(query: str):
@@ -14,10 +101,12 @@ def internet_search(query: str):
     or requires up-to-date public data.
     """
     try:
-        search = DuckDuckGoSearchRun()
-        return search.invoke(query)
-    except Exception as e:
-        return f"Error performing internet search: {e}"
+        return _run_duckduckgo_search(query=query, max_results=5)
+    except Exception:
+        try:
+            return _run_duckduckgo_instant_api(query=query, max_results=5)
+        except Exception as e:
+            return f"Error performing internet search: {e}"
 
 @tool
 def google_search_grounding(query: str):
@@ -28,7 +117,8 @@ def google_search_grounding(query: str):
     """
     api_key = os.getenv("SERPAPI_API_KEY")
     if not api_key:
-        return "Error: SERPAPI_API_KEY not found in environment. Cannot perform Google Search."
+        # Free fallback so the assistant still works without paid APIs.
+        return internet_search.invoke(query)
         
     try:
         params = {
@@ -56,6 +146,7 @@ def google_search_grounding(query: str):
 
 def create_retrieval_tool(vector_store):
     """Creates a custom retrieval tool that has access to the provided vector_store."""
+    max_chunk_chars = 1200
     
     @tool
     def search_uploaded_documents(query: str):
@@ -67,11 +158,31 @@ def create_retrieval_tool(vector_store):
         if not vector_store:
             return "Error: No documents have been uploaded or processed yet. Please upload files first."
         
-        docs = vector_store.similarity_search(query, k=3)
-        context = "\n\n".join(
-            f"--- Source: {os.path.basename(doc.metadata.get('source', 'Unknown'))} ---\n{doc.page_content}"
-            for doc in docs
-        )
+        docs = vector_store.similarity_search(query, k=5)
+
+        # Deduplicate near-identical snippets to avoid wasting context on repeated chunks.
+        seen = set()
+        formatted_docs = []
+        for doc in docs:
+            content = (doc.page_content or "").strip()
+            if not content:
+                continue
+            signature = content[:180]
+            if signature in seen:
+                continue
+            seen.add(signature)
+
+            source = os.path.basename(doc.metadata.get("source", "Unknown"))
+            page = doc.metadata.get("page")
+            page_display = f" | Page {page + 1}" if isinstance(page, int) else ""
+            formatted_docs.append(
+                f"--- Source: {source}{page_display} ---\n{content[:max_chunk_chars]}"
+            )
+
+        if not formatted_docs:
+            return "No relevant document context was found for this query."
+
+        context = "\n\n".join(formatted_docs)
         return context
 
     return search_uploaded_documents
